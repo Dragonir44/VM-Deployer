@@ -1,0 +1,92 @@
+- name: Création d'utilisateur et de connexion dans Guacamole #(commande de lancement ansible-playbook -i inventory.yml -u sysadmin create.yml)
+  hosts: all #action réalisé sur l'ensemble des hôte de l'inventaire
+  remote_user: sysadmin #connexion ssh via l'utilisateur sysadmin (clé ssh inscrite dans l'agent ssh)
+  tasks:
+  - name: Récupération de la date de l'os
+    shell: "date +%Y-%m-%d%H:%M:%S"
+    register: dateTime
+
+  - name: Séparation de la date et de l'heure
+    set_fact:
+      date: "{{ dateTime.stdout[0:10] }}"
+      time: "{{ dateTime.stdout[10:] }}"
+
+  - name: Execution du script sql 
+    community.mysql.mysql_query:
+      login_db: guacamole_db #nom de la base de donnée cible
+      login_user: guacamole_ext #nom d'utilisateur mariadb
+      login_password: P@$sWord #mot de passe mariadb
+      single_transaction: yes
+      query: #script sql (voir fichier addGuacamoleUser.sql pour les commentaires sql (et une meilleur présentation))
+          - SET @identifierAdmin = "Administrateur";
+          - SET @identifierForm1 = "Formation1";
+          - SET @identifierForm2 = "Formation2";
+          
+          - SET @protocol = "rdp";
+          - SET @numConnection = "2";
+          - SET @numConnectionPerUser = "1";
+          - SET @port = "3389";
+          - SET @security = "nla";
+          - SET @ignoreCertificate = "true";
+          - SET @keyboard = "fr-fr-azerty";
+          - SET @timeZone = 'Europe/Paris';
+          - SET @width = "1920";
+          - SET @height = "1080";
+          - SET @color = "32";
+          - SET @resize = "display-update";
+
+          - SET @passwordSalt = (UNHEX(SHA2(UUID(), 256)));
+          - SET @passwordGua1Encrypt = (UNHEX(SHA2(CONCAT(%(passForm1)s, HEX(@passwordSalt)), 256)));
+          - SET @passwordGua2Encrypt = (UNHEX(SHA2(CONCAT(%(passForm2)s, HEX(@passwordSalt)), 256)));
+          - SET @role = 'Apprenants';
+          - SET @timeZone = 'Europe/Paris';
+          - SET @organization = 'Next';
+
+          - INSERT INTO guacamole_connection (connection_name, protocol, max_connections, max_connections_per_user) VALUES (%(vmAdmin)s, @protocol, @numConnection, @numConnectionPerUser),(%(vmName1)s, @protocol, @numConnection, @numConnectionPerUser),(%(vmName2)s, @protocol, @numConnection, @numConnectionPerUser);
+         
+          - SET @connectionIdAdmin = (SELECT connection_id FROM guacamole_connection WHERE connection_name = %(vmAdmin)s);
+          - SET @connectionId1 = (SELECT connection_id FROM guacamole_connection WHERE connection_name = %(vmName1)s);
+          - SET @connectionId2 = (SELECT connection_id FROM guacamole_connection WHERE connection_name = %(vmName2)s);
+
+          - INSERT INTO guacamole_connection_parameter (connection_id, parameter_name, parameter_value) VALUES (@connectionIdAdmin, 'hostname', %(ip)s), (@connectionIdAdmin, 'port', @port), (@connectionIdAdmin, 'username', @identifierAdmin), (@connectionIdAdmin, 'password', %(passAdmin)s), (@connectionIdAdmin, 'timezone', @timeZone), (@connectionIdAdmin, 'ignore-cert', @ignoreCertificate), (@connectionIdAdmin, 'security', @security), (@connectionIdAdmin, 'server-layout', @keyboard), (@connectionIdAdmin, 'width', @width), (@connectionIdAdmin, 'height', @height), (@connectionIdAdmin, 'resize-method', @resize), (@connectionIdAdmin, 'color-depth', @color),(@connectionId1, 'hostname', %(ip)s), (@connectionId1, 'port', @port), (@connectionId1, 'username', @identifierForm1), (@connectionId1, 'password', %(passForm1)s), (@connectionId1, 'timezone', @timeZone), (@connectionId1, 'ignore-cert', @ignoreCertificate), (@connectionId1, 'security', @security), (@connectionId1, 'server-layout', @keyboard), (@connectionId1, 'width', @width), (@connectionId1, 'height', @height), (@connectionId1, 'resize-method', @resize), (@connectionId1, 'color-depth', @color),(@connectionId2, 'hostname', %(ip)s), (@connectionId2, 'port', @port), (@connectionId2, 'username', @identifierForm2), (@connectionId2, 'password', %(passForm2)s), (@connectionId2, 'timezone', @timeZone), (@connectionId2, 'ignore-cert', @ignoreCertificate), (@connectionId2, 'security', @security), (@connectionId2, 'server-layout', @keyboard), (@connectionId2, 'width', @width), (@connectionId2, 'height', @height), (@connectionId2, 'resize-method', @resize), (@connectionId2, 'color-depth', @color);
+          
+          - SET @roleId = (SELECT entity_id FROM guacamole_entity WHERE name = @role AND type = 'USER_GROUP');
+
+          - INSERT INTO guacamole_entity (name, type) VALUES (%(identifierGuaForm1)s, 'USER'), (%(identifierGuaForm2)s, 'USER');
+
+          - SET @adminEntityId = (SELECT entity_id FROM guacamole_entity WHERE name = %(identifierGuaFormateur)s AND type = 'USER');
+          - SET @userEntityId1 = (SELECT entity_id FROM guacamole_entity WHERE name = %(identifierGuaForm1)s AND type = 'USER');
+          - SET @userEntityId2 = (SELECT entity_id FROM guacamole_entity WHERE name = %(identifierGuaForm2)s AND type = 'USER');
+
+          - INSERT INTO guacamole_user (entity_id, password_hash, password_salt, password_date, access_window_start, access_window_end, valid_from, valid_until, timezone, organization, organizational_role) VALUES (@userEntityId1, @passwordGua1Encrypt, @passwordSalt, %(createOn)s, %(startHour)s, %(endHour)s, %(startDate)s, %(endDate)s, @timeZone, @organization, @role),(@userEntityId2, @passwordGua2Encrypt, @passwordSalt, %(createOn)s, %(startHour)s, %(endHour)s, %(startDate)s, %(endDate)s, @timeZone, @organization, @role);
+
+          - SET @AdminId = (SELECT user_id FROM guacamole_user WHERE entity_id = @adminEntityId);
+          - SET @userId1 = (SELECT user_id FROM guacamole_user WHERE entity_id = @userEntityId1);
+          - SET @userId2 = (SELECT user_id FROM guacamole_user WHERE entity_id = @userEntityId2);
+          
+          - INSERT INTO guacamole_user_permission (entity_id, affected_user_id, permission) VALUES (@userEntityId1, @userId1, 'READ'), (@userEntityId1, @userId1, 'UPDATE'),(@userEntityId2, @userId2, 'READ'), (@userEntityId2, @userId2, 'UPDATE')
+          
+          - SET @groupId = (SELECT g.user_group_id FROM guacamole_user_group g JOIN guacamole_entity e ON e.entity_id = g.entity_id WHERE e.name = @role);
+
+          - INSERT INTO guacamole_user_group_member (user_group_id, member_entity_id) VALUES (@groupId, @userEntityId1),(@groupId, @userEntityId2);
+
+          - INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission) VALUES (@adminEntityId, @connectionIdAdmin, 'READ'),(@userEntityId1, @connectionId1, 'READ'),(@userEntityId2, @connectionId2, 'READ');
+      named_args: #Argument dynamique (les arguments sont injecter via la synthax %(argsName)s visible dans la requête)
+        vmAdmin: "{{ vmAdmin }}"
+        vmName1: "{{ vmName1 }}"
+        vmName2: "{{ vmName2 }}"
+        ip: "{{ vmIp }}"
+        passAdmin: "{{ passAdmin }}"
+        passForm1: "{{ vmPass1 }}"
+        passForm2: "{{ vmPass2 }}"
+        identifierGuaFormateur: "{{ idFormateur }}"
+        identifierGuaForm1: "{{ guaId1 }}"
+        identifierGuaForm2: "{{ guaId2 }}"
+        passGuaForm1: '{{ guaPass1 }}'
+        passGuaForm2: '{{ guaPass2 }}'
+        createOn: "{{ date }} {{ time }}.000"
+        startDate: "{{ startDate }}"
+        endDate: "{{ endDate }}"
+        startHour: "{{ startHour }}"
+        endHour: "{{ endHour }}"
+    

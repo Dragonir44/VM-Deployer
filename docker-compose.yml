@@ -1,0 +1,19 @@
+version: '3.9'
+services:
+  app:
+    build: .
+    container_name: Terraform_test
+    ports:
+      - "6000:22"
+    networks:
+      - TerraformNetwork
+    environment:
+      - SSH_AUTH_SOCK=/ssh-agent
+    image: deployeurvm
+    volumes:
+      - ${SSH_AUTH_SOCK}:/ssh-agent
+      - .:/code
+
+networks:
+  TerraformNetwork:
+    driver: bridge

@@ -1,0 +1,8 @@
+all:
+  children:
+    guacamole:
+      hosts:
+        GuacamoleDEV:
+          ansible_host: 192.168.6.108
+      vars:
+        var1: "Echelon 1"

@@ -1,0 +1,16 @@
+- name: Envoie d'un mail récapitulatif au formateur et à l'équipe IT #(commande de lancement ansible-playbook -i inventory.yml -u sysadmin mail.yml)
+  hosts: localhost
+  tasks:
+  - name: Configuration du message
+    community.general.mail:
+      host: smtp.gmail.com
+      port: 587
+      username: 
+      password: 
+      sender: 
+      from: 
+      to: "{{ prenom }} {{ nom }} <{{ prenom }}.{{ nom }}@mail.fr"
+      subtype: html
+      subject: "Création de Vm de formation"
+      body: "{{ lookup('template', 'templates/mail.html.j2') }}"
+      charset: utf8

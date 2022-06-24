@@ -1,0 +1,35 @@
+- name: Destruction des données créer #(commande de lancement ansible-playbook -i inventory.yml -u sysadmin destroy.yml)
+  hosts: all #action réalisé sur l'ensemble des hôte de l'inventaire
+  remote_user: sysadmin #connexion ssh via l'utilisateur sysadmin (clé ssh inscrite dans l'agent ssh)
+  tasks:
+  - name: Execution du script sql 
+    community.mysql.mysql_query:
+      login_db: guacamole_db #nom de la base de donnée cible
+      login_user: guacamole_ext #nom d'utilisateur mariadb
+      login_password: P@$sWord #mot de passe mariadb
+      single_transaction: yes
+      query: #script sql (voir fichier addGuacamoleUser.sql pour les commentaires sql (et une meilleur présentation))
+      - SET @formation = %(formation)s;
+      - SET @ip = %(ip)s;
+
+      - SET @connectionId1 = (SELECT connection_id FROM guacamole_connection WHERE connection_name LIKE %(connection1)s);
+      - SET @connectionId2 = (SELECT connection_id FROM guacamole_connection WHERE connection_name LIKE %(connection2)s);
+      - SET @connectionIdAdmin = (SELECT connection_id FROM guacamole_connection WHERE connection_name LIKE %(connectionAdmin)s);
+
+      - SET @entityId1 = (SELECT entity_id FROM guacamole_connection_permission WHERE connection_id = @connectionId1);
+      - SET @entityId2 = (SELECT entity_id FROM guacamole_connection_permission WHERE connection_id = @connectionId2);
+
+      - DELETE FROM guacamole_entity WHERE entity_id = @entityId1;
+      - DELETE FROM guacamole_entity WHERE entity_id = @entityId2;
+
+      - DELETE FROM guacamole_connection WHERE connection_id = @connectionId1;
+      - DELETE FROM guacamole_connection WHERE connection_id = @connectionId2;
+      - DELETE FROM guacamole_connection WHERE connection_id = @connectionIdAdmin;
+
+      named_args: #Argument dynamique (les arguments sont injecter via la synthax %(argsName)s visible dans la requête)
+        formation: "{{ form }}"
+        ip: "{{ ip }}"
+        connection1: "{{ ip }} - {{ form }} - % - 1"
+        connection2: "{{ ip }} - {{ form }} - % - 2"
+        connectionAdmin: "{{ ip }} - {{ form }} - Admin"
+    
